@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高等元素论模拟器 (进阶版)</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --panel: #1e1e1e;
+            --text: #e0e0e0;
+            --border: #333;
+            /* 元素色谱 */
+            --pyro: #FF5722;   /* 火 */
+            --hydro: #03A9F4;  /* 水 */
+            --cryo: #99FFFF;   /* 冰 */
+            --electro: #B388FF;/* 雷 */
+            --dendro: #A5D6A7; /* 草 - MVP暂不做反应 */
+        }
+
+        body {
+            font-family: 'Segoe UI', Consolas, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        h1 { margin-bottom: 5px; }
+        .subtitle { font-size: 0.9rem; color: #888; margin-bottom: 20px; }
+
+        /* --- 核心显示区 --- */
+        .monitor-panel {
+            background: var(--panel);
+            width: 100%;
+            max-width: 700px;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            border: 1px solid var(--border);
+            text-align: center;
+            position: relative;
+        }
+
+        .element-badge {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: #333;
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            border: 4px solid #555;
+            transition: all 0.3s;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 15px;
+            font-family: 'Courier New', monospace;
+        }
+        .big-number { font-size: 2rem; font-weight: bold; }
+        .small-label { font-size: 0.8rem; color: #888; display: block; }
+
+        /* 进度条容器 */
+        .progress-track {
+            background: #333;
+            height: 24px;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            margin: 10px 0;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: #666;
+            transition: width 0.1s linear, background-color 0.2s;
+            position: relative;
+        }
+        
+        /* 刻度线 (1.0, 2.0, 3.0 GU) */
+        .tick-mark {
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 2px;
+            background: rgba(255,255,255,0.2);
+            z-index: 2;
+        }
+
+        /* --- 控制区 --- */
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr); /* 4列布局 */
+            gap: 10px;
+            width: 100%;
+            max-width: 700px;
+            margin-top: 20px;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .group-label {
+            text-align: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #444;
+            margin-bottom: 5px;
+        }
+
+        button {
+            padding: 10px 5px;
+            border: none;
+            border-radius: 6px;
+            color: #000;
+            font-weight: bold;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        button:active { transform: scale(0.95); }
+        
+        /* 按钮颜色 */
+        .col-pyro button { background: #ffab91; }
+        .col-pyro button:hover { background: var(--pyro); }
+        .col-pyro .group-label { color: var(--pyro); border-color: var(--pyro); }
+
+        .col-hydro button { background: #81d4fa; }
+        .col-hydro button:hover { background: var(--hydro); }
+        .col-hydro .group-label { color: var(--hydro); border-color: var(--hydro); }
+
+        .col-cryo button { background: #e0f7fa; }
+        .col-cryo button:hover { background: var(--cryo); }
+        .col-cryo .group-label { color: var(--cryo); border-color: var(--cryo); }
+
+        .col-electro button { background: #d1c4e9; }
+        .col-electro button:hover { background: var(--electro); }
+        .col-electro .group-label { color: var(--electro); border-color: var(--electro); }
+
+        .global-controls {
+            width: 100%; max-width: 700px;
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: #252525;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        
+        .btn-reset { background: #ff4444; color: white; width: 100px; }
+        .btn-pause { background: #ffbb33; color: black; width: 100px; }
+
+        /* --- 日志区 --- */
+        .log-box {
+            width: 100%; max-width: 700px;
+            height: 200px;
+            background: #000;
+            border: 1px solid #444;
+            border-radius: 8px;
+            margin-top: 20px;
+            padding: 10px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 0.85rem;
+        }
+        .log-entry { margin-bottom: 6px; border-bottom: 1px solid #222; padding-bottom: 2px; }
+        .log-calc { color: #888; padding-left: 15px; display: block; font-style: italic; }
+        .highlight { color: #ffff00; font-weight: bold; }
+
+    </style>
+</head>
+<body>
+
+    <h1>高等元素论模拟器 <span style="font-size:0.5em; vertical-align: middle; background:#333; padding:2px 6px; border-radius:4px;">v2.0 Pro</span></h1>
+    <div class="subtitle">支持：弱(1)/强(2)/超强(4) · 元素叠加刷新 · 复杂反应系数</div>
+
+    <div class="monitor-panel" id="monitorPanel">
+        <div class="element-badge" id="elemIcon">⚪</div>
+        
+        <div class="info-row">
+            <div>
+                <span class="small-label">当前剩余量 (GU)</span>
+                <span class="big-number" id="guValue">0.00</span>
+            </div>
+            <div>
+                <span class="small-label">衰减倒计时</span>
+                <span class="big-number" id="timeLeft">0.0s</span>
+            </div>
+        </div>
+
+        <div class="progress-track">
+            <div class="tick-mark" style="left: 25%"></div> <div class="tick-mark" style="left: 50%"></div> <div class="tick-mark" style="left: 75%"></div> <div class="progress-fill" id="progressBar"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:#666; padding:0 5px;">
+            <span>0</span><span>1.0(弱)</span><span>2.0(强)</span><span>3.0</span><span>4.0(超)</span>
+        </div>
+
+        <div id="statusText" style="margin-top: 15px; color: #888;">等待输入...</div>
+    </div>
+
+    <div class="global-controls">
+        <button class="btn-reset" onclick="resetState()">❌ 重置</button>
+        <button class="btn-pause" onclick="togglePause()" id="pauseBtn">⏸ 暂停衰减</button>
+        <div style="flex-grow:1; text-align:right; font-size:0.8rem; color:#888;">
+            <label>时间流速: <input type="range" min="0" max="2" step="0.1" value="1" oninput="timeScale=this.value"></label>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="btn-group col-pyro">
+            <div class="group-label">Pyro 火</div>
+            <button onclick="apply('Pyro', 'Weak')">弱火 (1.0)</button>
+            <button onclick="apply('Pyro', 'Strong')">强火 (2.0)</button>
+            <button onclick="apply('Pyro', 'Super')">超强火 (4.0)</button>
+        </div>
+        <div class="btn-group col-hydro">
+            <div class="group-label">Hydro 水</div>
+            <button onclick="apply('Hydro', 'Weak')">弱水 (1.0)</button>
+            <button onclick="apply('Hydro', 'Strong')">强水 (2.0)</button>
+            <button onclick="apply('Hydro', 'Super')">超强水 (4.0)</button>
+        </div>
+        <div class="btn-group col-cryo">
+            <div class="group-label">Cryo 冰</div>
+            <button onclick="apply('Cryo', 'Weak')">弱冰 (1.0)</button>
+            <button onclick="apply('Cryo', 'Strong')">强冰 (2.0)</button>
+            <button onclick="apply('Cryo', 'Super')">超强冰 (4.0)</button>
+        </div>
+        <div class="btn-group col-electro">
+            <div class="group-label">Electro 雷</div>
+            <button onclick="apply('Electro', 'Weak')">弱雷 (1.0)</button>
+            <button onclick="apply('Electro', 'Strong')">强雷 (2.0)</button>
+            <button onclick="apply('Electro', 'Super')">超强雷 (4.0)</button>
+        </div>
+    </div>
+
+    <div class="log-box" id="logWindow">
+        <div class="log-entry" style="color:#888">> System initialized. Ready.</div>
+    </div>
+
+<script>
+        // --- 1. 常量定义 (高等元素论核心数据) ---
+        
+        const GU_DATA = {
+            'Weak': 1.0,
+            'Strong': 2.0,
+            'Super': 4.0
+        };
+
+        const DECAY_RATES = {
+            'Weak': 1.0 / 9.5,
+            'Strong': 2.0 / 12.0,
+            'Super': 4.0 / 17.0
+        };
+
+        // 【修正点 1】：将反应系数表升级为包含名称的对象
+        const REACTION_DATA = {
+            // 蒸发 Vaporize
+            'Hydro+Pyro': { name: '蒸发 Vaporize (水打火)', coeff: 2.0 },
+            'Pyro+Hydro': { name: '蒸发 Vaporize (火打水)', coeff: 0.5 },
+            
+            // 融化 Melt
+            'Pyro+Cryo': { name: '融化 Melt (火打冰)', coeff: 2.0 },
+            'Cryo+Pyro': { name: '融化 Melt (冰打火)', coeff: 0.5 },
+            
+            // 剧变反应 (简化为 1:1 消耗)
+            'Electro+Pyro': { name: '超载 Overload', coeff: 1.0 },
+            'Pyro+Electro': { name: '超载 Overload', coeff: 1.0 },
+            
+            'Electro+Hydro': { name: '感电 Electro-Charged', coeff: 1.0 },
+            'Hydro+Electro': { name: '感电 Electro-Charged', coeff: 1.0 },
+            
+            'Electro+Cryo': { name: '超导 Superconduct', coeff: 1.0 },
+            'Cryo+Electro': { name: '超导 Superconduct', coeff: 1.0 },
+            
+            // 冻结 (暂做互耗)
+            'Cryo+Hydro': { name: '冻结 Frozen', coeff: 1.0 },
+            'Hydro+Cryo': { name: '冻结 Frozen', coeff: 1.0 }
+        };
+
+        const COLORS = { 
+            Pyro: '#FF5722', Hydro: '#03A9F4', Cryo: '#99FFFF', Electro: '#B388FF', 
+            null: '#333' 
+        };
+        const ICONS = { Pyro: '🔥', Hydro: '💧', Cryo: '❄️', Electro: '⚡', null: '⚪' };
+
+        // --- 2. 状态管理 ---
+        
+        let state = {
+            element: null,     
+            gauge: 0.0,         
+            decayRate: 0.0,    
+            lastTime: Date.now(),
+            isPaused: false
+        };
+        
+        let timeScale = 1.0; 
+
+        // --- 3. 核心逻辑 ---
+
+        function apply(incomingElem, strengthType) {
+            const incomingGauge = GU_DATA[strengthType];
+            const incomingDecayRate = DECAY_RATES[strengthType];
+            
+            addLog(`操作: 施加 [${strengthType} ${incomingElem}] (${incomingGauge.toFixed(1)} GU)`);
+
+            if (state.element === null) {
+                state.element = incomingElem;
+                state.gauge = incomingGauge;
+                state.decayRate = incomingDecayRate;
+                addLog(`>>> 附着成功。初始速率: ${state.decayRate.toFixed(3)} GU/s`);
+            }
+            
+            else if (state.element === incomingElem) {
+                if (incomingGauge > state.gauge) {
+                    addLog(`>>> 同色刷新: 新量(${incomingGauge}) > 旧量(${state.gauge.toFixed(2)})`);
+                    state.gauge = incomingGauge;
+                    state.decayRate = incomingDecayRate;
+                } else {
+                    addLog(`>>> 同色补充: 新量(${incomingGauge}) < 旧量，仅刷新持续时间`);
+                    state.gauge = Math.max(state.gauge, incomingGauge);
+                }
+            }
+            
+            // 【修正点 2】：读取新的数据结构
+            else {
+                const key = `${incomingElem}+${state.element}`;
+                const reactionInfo = REACTION_DATA[key]; // 获取反应对象
+                
+                if (reactionInfo) {
+                    const { name, coeff } = reactionInfo; // 解构出名字和系数
+                    const cost = incomingGauge * coeff;
+                    
+                    // 【修正点 3】：日志中显示具体的反应名称
+                    addLog(`<span class="highlight">>>> 触发: [${name}] (系数 ${coeff})</span>`);
+                    addLog(`计算: 底色(${state.gauge.toFixed(2)}) - (攻击${incomingGauge} * 系数${coeff})`);
+                    
+                    state.gauge -= cost;
+                    
+                    if (state.gauge <= 0) {
+                        state.gauge = 0;
+                        state.element = null;
+                        state.decayRate = 0;
+                        addLog(`结果: 元素被完全消耗，无残留。`);
+                    } else {
+                        addLog(`结果: 反应后有残留 ${state.gauge.toFixed(2)} GU`);
+                    }
+                } else {
+                    addLog(`未定义或不发生反应的组合。`);
+                }
+            }
+            updateUI();
+        }
+
+        function gameLoop() {
+            const now = Date.now();
+            const dt = (now - state.lastTime) / 1000 * timeScale;
+            state.lastTime = now;
+
+            if (!state.isPaused && state.gauge > 0) {
+                state.gauge -= dt * state.decayRate;
+                if (state.gauge <= 0) {
+                    state.gauge = 0;
+                    state.element = null;
+                    state.decayRate = 0;
+                    addLog(`[System] 元素已随时间自然消散。`);
+                }
+                updateUI();
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateUI() {
+            const bar = document.getElementById('progressBar');
+            const guText = document.getElementById('guValue');
+            const timeText = document.getElementById('timeLeft');
+            const icon = document.getElementById('elemIcon');
+            const status = document.getElementById('statusText');
+            const panel = document.getElementById('monitorPanel');
+
+            guText.innerText = state.gauge.toFixed(2);
+            
+            let timeLeft = 0;
+            if (state.decayRate > 0) {
+                timeLeft = state.gauge / state.decayRate;
+            }
+            timeText.innerText = timeLeft.toFixed(1) + 's';
+
+            icon.innerText = ICONS[state.element];
+            icon.style.borderColor = COLORS[state.element];
+            icon.style.boxShadow = state.element ? `0 0 20px ${COLORS[state.element]}` : 'none';
+
+            const maxScale = 4.0; 
+            const pct = (state.gauge / maxScale) * 100;
+            bar.style.width = pct + '%';
+            bar.style.backgroundColor = COLORS[state.element] || '#666';
+
+            if (state.element) {
+                status.innerText = `状态: [${state.element}] 附着中 | 衰减速率: ${state.decayRate.toFixed(3)}/s`;
+                status.style.color = COLORS[state.element];
+            } else {
+                status.innerText = "无附着";
+                status.style.color = "#888";
+            }
+        }
+
+        function resetState() {
+            state.element = null;
+            state.gauge = 0;
+            state.decayRate = 0;
+            addLog("--- 状态已重置 ---");
+            updateUI();
+        }
+
+        function togglePause() {
+            state.isPaused = !state.isPaused;
+            document.getElementById('pauseBtn').innerText = state.isPaused ? "▶ 继续" : "⏸ 暂停衰减";
+            addLog(state.isPaused ? "[System] 衰减暂停" : "[System] 衰减继续");
+        }
+
+        function addLog(msg) {
+            const box = document.getElementById('logWindow');
+            const time = new Date().toLocaleTimeString().split(' ')[0];
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            
+            if (msg.includes('计算:')) {
+                const parts = msg.split('计算:');
+                div.innerHTML = `<span style="color:#666">[${time}]</span> ${parts[0]}<br><span class="log-calc">Calculation: ${parts[1]}</span>`;
+            } else {
+                div.innerHTML = `<span style="color:#666">[${time}]</span> ${msg}`;
+            }
+            
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        gameLoop();
+    </script></body>
+</html>
